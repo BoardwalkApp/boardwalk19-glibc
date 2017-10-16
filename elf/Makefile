@@ -24,7 +24,7 @@ include ../Makeconfig
 headers		= elf.h bits/elfclass.h link.h bits/link.h
 routines	= $(dl-routines) dl-support dl-iteratephdr \
 		  dl-addr enbl-secure dl-profstub \
-		  dl-origin dl-libc dl-sym dl-tsd dl-sysdep
+		  dl-origin dl-libc dl-sym dl-tsd dl-sysdep dl-altinit
 
 # The core dynamic linking functions are in libc for the static and
 # profiled libraries.
@@ -49,6 +49,10 @@ all-rtld-routines = $(rtld-routines) $(sysdep-rtld-routines)
 CFLAGS-dl-runtime.c = -fexceptions -fasynchronous-unwind-tables
 CFLAGS-dl-lookup.c = -fexceptions -fasynchronous-unwind-tables
 CFLAGS-dl-iterate-phdr.c = $(uses-callbacks)
+
+# We only need to re-run initializers if ld.so and libc.so might be built
+# for different machines, so only shared libraries need dl-altinit.
+shared-only-routines += dl-altinit
 
 ifeq ($(unwind-find-fde),yes)
 routines += unwind-dw2-fde-glibc
@@ -121,7 +125,7 @@ tests = tst-tls1 tst-tls2 tst-tls9 tst-leaks1 \
 	tst-auxv
 tests-static = tst-tls1-static tst-tls2-static tst-stackguard1-static \
 	       tst-leaks1-static tst-array1-static tst-array5-static \
-	       tst-ptrguard1-static tst-dl-iter-static
+	       tst-ptrguard1-static
 ifeq (yes,$(build-shared))
 tests-static += tst-tls9-static
 tst-tls9-static-ENV = \
@@ -130,7 +134,7 @@ endif
 tests += $(tests-static)
 ifeq (yes,$(build-shared))
 tests += loadtest restest1 preloadtest loadfail multiload origtest resolvfail \
-	 constload1 order vismain noload filter unload \
+	 constload1 order noload filter unload \
 	 reldep reldep2 reldep3 reldep4 nodelete nodelete2 \
 	 nodlopen nodlopen2 neededtest neededtest2 \
 	 neededtest3 neededtest4 unload2 lateglobal initfirst global \
@@ -218,6 +222,9 @@ ifeq (yesyes,$(have-fpie)$(build-shared))
 modules-names += tst-piemod1
 tests += tst-pie1 tst-pie2
 tests-pie += tst-pie1 tst-pie2
+tests += vismain
+tests-pie += vismain
+CFLAGS-vismain.c = $(PIE-ccflag)
 endif
 modules-execstack-yes = tst-execstack-mod
 extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
@@ -358,7 +365,7 @@ $(objpfx)interp.os: $(elf-objpfx)runtime-linker.h
 
 $(elf-objpfx)runtime-linker.h: $(elf-objpfx)runtime-linker.st; @:
 $(elf-objpfx)runtime-linker.st: $(common-objpfx)config.make
-	$(name-target-directory)
+	$(make-target-directory)
 	echo '#define RUNTIME_LINKER "$(rtlddir)/$(rtld-installed-name)"' \
 		> ${@:st=T}
 	$(move-if-change) ${@:st=T} ${@:st=h}
@@ -382,7 +389,7 @@ $(objpfx)trusted-dirs.st: Makefile $(..)Makeconfig
 	$(make-target-directory)
 	echo "$(subst :, ,$(default-rpath) $(user-defined-trusted-dirs))"    \
 	| $(AWK) -f gen-trusted-dirs.awk > ${@:st=T};
-	echo '#define DL_DST_LIB "$(notdir $(slibdir))"' >> ${@:st=T}
+	echo '#define DL_DST_LIB "$(shell echo $(slibdir) | sed 's,/,,')"' >> ${@:st=T}
 	$(move-if-change) ${@:st=T} ${@:st=h}
 	touch $@
 CPPFLAGS-dl-load.c = -I$(objpfx). -I$(csu-objpfx).
@@ -440,7 +447,7 @@ CFLAGS-ldconfig.c = $(SYSCONF-FLAGS) -D'LIBDIR="$(libdir)"' \
 libof-ldconfig = ldconfig
 CFLAGS-dl-cache.c = $(SYSCONF-FLAGS)
 CFLAGS-cache.c = $(SYSCONF-FLAGS)
-CFLAGS-rtld.c = $(SYSCONF-FLAGS)
+CFLAGS-rtld.c += $(SYSCONF-FLAGS)
 
 cpp-srcs-left := $(all-rtld-routines:=.os)
 lib := rtld

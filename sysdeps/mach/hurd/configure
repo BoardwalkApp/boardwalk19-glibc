@@ -36,3 +36,5 @@ $as_echo "$libc_cv_hurd_version" >&6; }
 if test "x$libc_cv_hurd_version" != xok; then
   as_fn_error $? "Hurd headers not installed or too old" "$LINENO" 5
 fi
+
+use_ldconfig=yes

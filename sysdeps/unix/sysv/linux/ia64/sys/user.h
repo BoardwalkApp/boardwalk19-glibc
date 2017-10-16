@@ -20,6 +20,7 @@
 
 #include <features.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 /* This definition comes directly from the kernel headers.  If
    anything changes in them this header has to be changed, too.  */
@@ -44,7 +45,7 @@ struct user
   char u_comm[32];				/* User command name.  */
 };
 
-#define NBPG			PAGE_SIZE
+#define NBPG			(sysconf(_SC_PAGESIZE))
 #define UPAGES			1
 #define HOST_TEXT_START_ADDR	(u.start_code)
 #define HOST_DATA_START_ADDR	(u.start_data)

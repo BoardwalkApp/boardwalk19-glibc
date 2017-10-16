@@ -26,7 +26,7 @@ struct cpu_features __cpu_features attribute_hidden;
 
 
 static void
-get_common_indeces (unsigned int *family, unsigned int *model)
+get_common_indeces (unsigned int *family, unsigned int *model, unsigned int *stepping)
 {
   __cpuid (1, __cpu_features.cpuid[COMMON_CPUID_INDEX_1].eax,
 	   __cpu_features.cpuid[COMMON_CPUID_INDEX_1].ebx,
@@ -36,6 +36,7 @@ get_common_indeces (unsigned int *family, unsigned int *model)
   unsigned int eax = __cpu_features.cpuid[COMMON_CPUID_INDEX_1].eax;
   *family = (eax >> 8) & 0x0f;
   *model = (eax >> 4) & 0x0f;
+  *stepping = eax & 0x0f;
 }
 
 
@@ -47,6 +48,7 @@ __init_cpu_features (void)
   unsigned int edx;
   unsigned int family = 0;
   unsigned int model = 0;
+  unsigned int stepping = 0;
   enum cpu_features_kind kind;
 
   __cpuid (0, __cpu_features.max_cpuid, ebx, ecx, edx);
@@ -56,7 +58,7 @@ __init_cpu_features (void)
     {
       kind = arch_kind_intel;
 
-      get_common_indeces (&family, &model);
+      get_common_indeces (&family, &model, &stepping);
 
       unsigned int eax = __cpu_features.cpuid[COMMON_CPUID_INDEX_1].eax;
       unsigned int extended_family = (eax >> 20) & 0xff;
@@ -135,7 +137,7 @@ __init_cpu_features (void)
     {
       kind = arch_kind_amd;
 
-      get_common_indeces (&family, &model);
+      get_common_indeces (&family, &model, &stepping);
 
       ecx = __cpu_features.cpuid[COMMON_CPUID_INDEX_1].ecx;
 
@@ -187,6 +189,14 @@ __init_cpu_features (void)
 	    __cpu_features.feature[index_FMA4_Usable] |= bit_FMA4_Usable;
 	}
     }
+
+  /* Disable Intel TSX (HLE and RTM) due to erratum HSD136/HSW136
+     on Haswell processors, to work around outdated microcode that
+     doesn't disable the broken feature by default */
+  if (kind == arch_kind_intel && family == 6 &&
+      ((model == 63 && stepping <= 2) || (model == 60 && stepping <= 3) ||
+       (model == 69 && stepping <= 1) || (model == 70 && stepping <= 1)))
+    __cpu_features.cpuid[COMMON_CPUID_INDEX_7].ebx &= ~(bit_RTM | bit_HLE);
 
   __cpu_features.family = family;
   __cpu_features.model = model;

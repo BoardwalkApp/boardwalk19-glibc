@@ -247,6 +247,7 @@ _dl_load_cache_lookup (const char *name)
   if (cache_new != (void *) -1)
     {
       uint64_t platform;
+      int disable_hwcap = 0;
 
       /* This is where the strings start.  */
       cache_data = (const char *) cache_new;
@@ -258,6 +259,9 @@ _dl_load_cache_lookup (const char *name)
       if (platform != (uint64_t) -1)
 	platform = 1ULL << platform;
 
+      if (__access ("/etc/ld.so.nohwcap", F_OK) == 0)
+	disable_hwcap = 1;
+
 #define _DL_HWCAP_TLS_MASK (1LL << 63)
       uint64_t hwcap_exclude = ~((GLRO(dl_hwcap) & GLRO(dl_hwcap_mask))
 				 | _DL_HWCAP_PLATFORM | _DL_HWCAP_TLS_MASK);
@@ -267,6 +271,8 @@ _dl_load_cache_lookup (const char *name)
       if (lib->hwcap & hwcap_exclude)					      \
 	continue;							      \
       if (GLRO(dl_osversion) && lib->osversion > GLRO(dl_osversion))	      \
+	continue;							      \
+      if (disable_hwcap && lib->hwcap != 0)				      \
 	continue;							      \
       if (_DL_PLATFORMS_COUNT						      \
 	  && (lib->hwcap & _DL_HWCAP_PLATFORM) != 0			      \

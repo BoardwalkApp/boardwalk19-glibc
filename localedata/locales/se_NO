@@ -137,7 +137,7 @@ reorder-after <U010B>
 <U01EF> <ezhcaron>;<CAR>;<MIN>;IGNORE % ezh caron
 
 reorder-after <U010A>
-<U01B7> <ezh>;<BAS>;<MIN>;IGNORE % EZH
+<U01B7> <ezh>;<BAS>;<CAP>;IGNORE % EZH
 <U01EE> <ezhcaron>;<CAR>;<CAP>;IGNORE % EZH caron
 
 reorder-after <U0064>
@@ -164,9 +164,10 @@ reorder-after <U0137>
 reorder-after <U0136>
 <U01E8> <kcaron>;<CAR>;<CAP>;IGNORE % Kcaron
 
-reorder-after <U0053>
+reorder-after <U0073>
 <U00DF> <ssharp>;"<LIG><LIG>";"<MIN><MIN>";IGNORE % ß
 <U0161> <scaron>;<CAR>;<MIN>;IGNORE % 288 <s<>
+reorder-after <U0053>
 <U0160> <scaron>;<CAR>;<CAP>;IGNORE % 405 <S<>
 
 
@@ -276,6 +277,9 @@ date_fmt       "<U0025><U0041><U002C><U0020><U0025><U0042><U0020><U0025><U0064><
 <U0020><U0025><U005A>"
 
 % %a %b-%e %H:%M:%S %Z %Y søn jan-31 21:15:11 CET 2001
+%  FIXME: found in CLDR
+first_weekday 2
+first_workday 2
 END LC_TIME
 
 LC_MESSAGES

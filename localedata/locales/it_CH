@@ -57,9 +57,7 @@ copy  "de_CH"
 END LC_MONETARY
 
 LC_NUMERIC
-decimal_point             "<U002C>"
-thousands_sep             "<U0027>"
-grouping                  3;3
+copy  "de_CH"
 END LC_NUMERIC
 
 LC_TIME
@@ -100,6 +98,8 @@ t_fmt_ampm ""
 date_fmt       "<U0025><U0061><U0020><U0025><U0065><U0020><U0025>/
 <U0062><U0020><U0025><U0059><U002C><U0020><U0025><U0048><U002E>/
 <U0025><U004D><U002E><U0025><U0053><U002C><U0020><U0025><U005A>"
+%  FIXME: found in CLDR
+first_weekday 2
 END LC_TIME
 
 LC_PAPER

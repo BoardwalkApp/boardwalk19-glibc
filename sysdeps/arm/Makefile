@@ -32,6 +32,11 @@ $(objpfx)tst-armtlsdescextlazy: $(objpfx)tst-armtlsdescextlazymod.so
 endif
 endif
 endif
+ifeq (yes,$(build-shared))
+# Compatibility
+sysdep_routines += libgcc-compat
+shared-only-routines += libgcc-compat
+endif
 
 ifeq ($(subdir),csu)
 # get offset to rtld_global._dl_hwcap

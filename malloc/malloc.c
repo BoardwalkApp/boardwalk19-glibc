@@ -1843,8 +1843,11 @@ void weak_variable (*__after_morecore_hook) (void) = NULL;
 
 /* ---------------- Error behavior ------------------------------------ */
 
+
+/* we don't want to emit a backtrace on error, see
+   https://sourceware.org/bugzilla/show_bug.cgi?id=16159, so set to 1 */
 #ifndef DEFAULT_CHECK_ACTION
-# define DEFAULT_CHECK_ACTION 3
+# define DEFAULT_CHECK_ACTION 1
 #endif
 
 static int check_action = DEFAULT_CHECK_ACTION;
@@ -4957,7 +4960,9 @@ malloc_printerr (int action, const char *str, void *ptr)
       while (cp > buf)
         *--cp = '0';
 
-      __libc_message (action & 2, "*** Error in `%s': %s: 0x%s ***\n",
+      /* always abort (action & 1) and (on linux) if bit 1 is set,
+         emit backtrace */
+      __libc_message (action & 3, "*** Error in `%s': %s: 0x%s ***\n",
                       __libc_argv[0] ? : "<unknown>", str, cp);
     }
   else if (action & 2)

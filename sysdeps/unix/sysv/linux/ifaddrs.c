@@ -131,13 +131,7 @@ __netlink_request (struct netlink_handle *h, int type)
   ssize_t read_len;
   bool done = false;
 
-#ifdef PAGE_SIZE
-  /* Help the compiler optimize out the malloc call if PAGE_SIZE
-     is constant and smaller or equal to PTHREAD_STACK_MIN/4.  */
-  const size_t buf_size = PAGE_SIZE;
-#else
   const size_t buf_size = __getpagesize ();
-#endif
   bool use_malloc = false;
   char *buf;
 

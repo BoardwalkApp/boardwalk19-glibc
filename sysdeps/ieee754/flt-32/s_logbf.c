@@ -20,6 +20,7 @@ float
 __logbf (float x)
 {
   int32_t ix, rix;
+  float ret;
 
   GET_FLOAT_WORD (ix, x);
   ix &= 0x7fffffff;		/* high |x| */
@@ -33,6 +34,8 @@ __logbf (float x)
          though it were normalized.  */
       rix -= __builtin_clz (ix) - 9;
     }
-  return (float) (rix - 127);
+  ret = (float) (rix - 127);
+  /* The test is to avoid logb_downward (0.0) == -0.0.  */
+  return ret == -0.0 ? 0.0 : ret;
 }
 weak_alias (__logbf, logbf)

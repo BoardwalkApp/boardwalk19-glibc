@@ -111,6 +111,7 @@ GLIBC_2.0
  __check_rhosts_file D 0x4
  __clone F
  __close F
+ __cmpdi2 F
  __cmsg_nxthdr F
  __connect F
  __ctype32_b D 0x4
@@ -134,6 +135,9 @@ GLIBC_2.0
  __finite F
  __finitef F
  __finitel F
+ __fixunsdfdi F
+ __fixunsxfdi F
+ __floatdidf F
  __fork F
  __fpu_control D 0x2
  __frame_state_for F
@@ -232,6 +236,7 @@ GLIBC_2.0
  __sysv_signal F
  __timezone D 0x4
  __tzname D 0x8
+ __ucmpdi2 F
  __udivdi3 F
  __uflow F
  __umoddi3 F

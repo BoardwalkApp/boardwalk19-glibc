@@ -56,7 +56,12 @@ static struct local
   }
 local =
   {
+#ifndef SHARED
     .root = &local.boot_table,
+#else
+    /* Address of .boot_table is not known until runtime.  */
+    .root = 0,
+#endif
     .npages = 2,
     .boot_table =
       {
@@ -93,6 +98,17 @@ new_fdesc_table (struct local *l, size_t *size)
   return new_table;
 }
 
+/* Must call _dl_fptr_init before using any other function.  */
+void
+_dl_fptr_init (void)
+{
+  struct local *l;
+
+  ELF_MACHINE_LOAD_ADDRESS (l, local);
+  /* Initialize root once.  */
+  if (__builtin_expect (l->root == 0, 0))
+    l->root = &l->boot_table;
+}
 
 static ElfW(Addr)
 make_fdesc (ElfW(Addr) ip, ElfW(Addr) gp)

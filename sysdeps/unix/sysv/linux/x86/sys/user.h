@@ -22,6 +22,8 @@
    too much into it.  Don't use it for anything other than GDB unless
    you know what you are doing.  */
 
+#include <unistd.h>
+
 #ifdef __x86_64__
 
 struct user_fpregs_struct

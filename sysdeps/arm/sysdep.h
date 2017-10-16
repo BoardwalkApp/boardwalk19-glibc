@@ -57,7 +57,7 @@
 # define ARCH_HAS_BLX
 #endif
 #if __ARM_ARCH > 6 || defined (__ARM_ARCH_6K__) || defined (__ARM_ARCH_6ZK__)
-# define ARCH_HAS_HARD_TP
+//# define ARCH_HAS_HARD_TP
 #endif
 #if __ARM_ARCH > 6 || defined (__ARM_ARCH_6T2__)
 # define ARCH_HAS_T2
@@ -134,6 +134,13 @@
    the caller.  */
 	.eabi_attribute 24, 1
 
+#ifdef __ARM_PCS_VFP
+/* Tag_ABI_HardFP_use: This code uses hard floating point */
+	.eabi_attribute 27, 3
+/* Tag_ABI_VFP_args: This code stores FP arguments in VFP registers */
+	.eabi_attribute 28, 1
+#endif  /* __ARM_PCS_VFP */
+
 /* The thumb2 encoding is reasonably complete.  Unless suppressed, use it.  */
 	.syntax unified
 # if defined(__thumb2__) && !defined(NO_THUMB)
@@ -198,7 +205,7 @@
 #  define LDR_GLOBAL(R, T, SYMBOL, CONSTANT)				\
 	movw	T, #:lower16:SYMBOL;					\
 	movt	T, #:upper16:SYMBOL;					\
-	ldr	R, [T, $CONSTANT]
+	sfi_breg T, ldr R, [\B, $CONSTANT]
 # elif defined (ARCH_HAS_T2) && defined (PIC) && ARM_PCREL_MOVW_OK
 #  define LDR_GLOBAL(R, T, SYMBOL, CONSTANT)				\
 	movw	R, #:lower16:_GLOBAL_OFFSET_TABLE_ - 97f - PC_OFS;	\
@@ -212,7 +219,7 @@
 97:	add	R, R, pc;						\
 98:	LDST_PC_INDEXED (ldr, T, T, T);					\
 	LDST_INDEXED (ldr, R, T, R, T);					\
-	ldr	R, [R, $CONSTANT]
+	sfi_breg R, ldr	R, [\B, $CONSTANT]
 # else
 #  define LDR_GLOBAL(R, T, SYMBOL, CONSTANT)		\
 	ldr	T, 99f;					\

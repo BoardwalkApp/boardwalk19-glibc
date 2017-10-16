@@ -381,6 +381,11 @@ os=$config_os
 base_os=''
 
 submachine=
+# Force v9
+if test "$machine" = sparc; then
+   machine="sparcv9"
+fi
+
 AC_ARG_WITH([cpu],
 	    AS_HELP_STRING([--with-cpu=CPU], [select code for CPU variant]),
 	    [dnl
@@ -537,7 +542,7 @@ AC_SUBST(add_on_subdirs)
 ###
 if test -z "$enable_hacker_mode" && test x"$libc_config_ok" != xyes; then
   case "$machine-$host_os" in
-  *-linux* | *-gnu*)
+  *-linux* | *-gnu* | *-kfreebsd*)
     ;;
   *)
     echo "*** The GNU C library is currently not available for this platform."
@@ -626,6 +631,8 @@ gnu*)
   base_os=mach/hurd ;;
 linux*)
   base_os=unix/sysv ;;
+k*bsd*)
+  base_os=unix/bsd/bsd4.4 ;;
 esac
 
 # For sunos4.1.1, try sunos4.1.1, then sunos4.1, then sunos4, then sunos.
@@ -1732,6 +1739,10 @@ if test -n "$submachine"; then
 		 libc_cv_cc_submachine, [dnl
   libc_cv_cc_submachine=no
   for opt in "-march=$submachine" "-mcpu=$submachine"; do
+    # dirty hack to tune all power7 builds for power8:
+    if [ "$opt" = "-mcpu=power7" ]; then
+      opt="-mcpu=power7 -mtune=power8"
+    fi
     LIBC_TRY_CC_OPTION([$opt], [
       libc_cv_cc_submachine="$opt"
       break], [])

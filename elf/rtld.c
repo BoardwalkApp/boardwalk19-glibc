@@ -970,9 +970,11 @@ of this helper program; chances are you did not intend to run this program.\n\
 	  case AT_ENTRY:
 	    av->a_un.a_val = *user_entry;
 	    break;
+# ifdef AT_EXECFN	    
 	  case AT_EXECFN:
 	    av->a_un.a_val = (uintptr_t) _dl_argv[0];
 	    break;
+# endif	    
 	  }
 #endif
     }
@@ -2319,7 +2321,7 @@ process_dl_audit (char *str)
   while ((p = (strsep) (&str, ":")) != NULL)
     if (p[0] != '\0'
 	&& (__builtin_expect (! __libc_enable_secure, 1)
-	    || strchr (p, '/') == NULL))
+	))
       {
 	/* This is using the local malloc, not the system malloc.  The
 	   memory can never be freed.  */

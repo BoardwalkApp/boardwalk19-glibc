@@ -1,0 +1,2 @@
+../configure --prefix= --host=arm-linux-gnueabihf --enable-add-ons
+CFLAGS="-O3 -mtp=soft -march=armv7-a" ../configure --prefix= --host=arm-linux-gnueabihf --enable-add-ons

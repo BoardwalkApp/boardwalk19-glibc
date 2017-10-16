@@ -191,6 +191,8 @@ libpthread {
     __pthread_rwlock_unlock;
 
     __res_state;
+
+    potato_create_thread;
   }
 
   GLIBC_2.2.3 {

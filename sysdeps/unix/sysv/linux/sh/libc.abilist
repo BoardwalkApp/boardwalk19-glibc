@@ -278,6 +278,7 @@ GLIBC_2.2
  __flbf F
  __fork F
  __fpending F
+ __fpscr_values D 0x8
  __fpu_control D 0x4
  __fpurge F
  __freadable F

@@ -164,6 +164,24 @@ struct symbol_t
   size_t line;
 };
 
+/* Data type for toggles.  */
+struct toggle_list_t;
+
+struct toggle_list_t
+{
+  const char *name;
+
+  /* Predecessor in the list.  */
+  struct toggle_list_t *last;
+
+  /* This flag is set when a keyword is undefined.  */
+  int is_undefined;
+
+  /* Where does the branch come from.  */
+  const char *file;
+  size_t line;
+};
+
 /* Sparse table of struct element_t *.  */
 #define TABLE wchead_table
 #define ELEMENT struct element_t *
@@ -183,14 +201,6 @@ struct symbol_t
 #define ELEMENT uint32_t
 #define DEFAULT ~((uint32_t) 0)
 #include "3level.h"
-
-
-/* Simple name list for the preprocessor.  */
-struct name_list
-{
-  struct name_list *next;
-  char str[0];
-};
 
 
 /* The real definition of the struct for the LC_COLLATE locale.  */
@@ -227,6 +237,9 @@ struct locale_collate_t
   /* This value is used when handling ellipsis.  */
   struct element_t ellipsis_weight;
 
+  /* This is a stack of .  */
+  struct toggle_list_t *flow_control;
+
   /* Known collating elements.  */
   hash_table elem_table;
 
@@ -254,24 +267,12 @@ struct locale_collate_t
   /* The arrays with the collation sequence order.  */
   unsigned char mbseqorder[256];
   struct collseq_table wcseqorder;
-
-  /* State of the preprocessor.  */
-  enum
-    {
-      else_none = 0,
-      else_ignore,
-      else_seen
-    }
-    else_action;
 };
 
 
 /* We have a few global variables which are used for reading all
    LC_COLLATE category descriptions in all files.  */
 static uint32_t nrules;
-
-/* List of defined preprocessor symbols.  */
-static struct name_list *defined;
 
 
 /* We need UTF-8 encoding of numbers.  */
@@ -1487,6 +1488,56 @@ order for `%.*s' already defined at %s:%Zu"),
 }
 
 
+static struct token *
+flow_skip (struct linereader *ldfile, const struct charmap_t *charmap,
+	   struct locale_collate_t *collate)
+{
+  int level = 0;
+  struct token *now;
+  enum token_t nowtok;
+  while (1)
+    {
+      lr_ignore_rest (ldfile, 0);
+      now = lr_token (ldfile, charmap, NULL, NULL, 0);
+      nowtok = now->tok;
+      if (nowtok == tok_eof)
+	break;
+      else if (nowtok == tok_ifdef || nowtok == tok_ifndef)
+	++level ;
+      else if (nowtok == tok_else)
+	{
+	  if (strcmp (collate->flow_control->name, "else") == 0)
+	    lr_error (ldfile,
+		      _("%s: `else' statement at `%s:%Zu' cannot be followed by another `else' statement"),
+		      "LC_COLLATE", collate->flow_control->name, collate->flow_control->line);
+	  if (level == 0)
+	    {
+	      collate->flow_control->name = "else";
+	      collate->flow_control->file = ldfile->fname;
+	      collate->flow_control->line = ldfile->lineno;
+	      break;
+	    }
+	}
+      else if (nowtok == tok_endif)
+	{
+	  if (level == 0)
+	    {
+	      collate->flow_control = collate->flow_control->last;
+	      break;
+	    }
+	  --level ;
+	}
+    }
+  if (nowtok == tok_eof)
+    WITH_CUR_LOCALE (error (0, 0, _("\
+%s: unterminated `%s' flow control beginning at %s:%Zu"),
+				 "LC_COLLATE", collate->flow_control->name,
+				 collate->flow_control->file,
+				 collate->flow_control->line));
+  return now;
+}
+
+
 static void
 collate_startup (struct linereader *ldfile, struct localedef_t *locale,
 		 struct localedef_t *copy_locale, int ignore_content)
@@ -1555,6 +1606,7 @@ collate_finish (struct localedef_t *locale, const struct charmap_t *charmap)
   int i;
   int need_undefined = 0;
   struct section_list *sect;
+  enum coll_sort_rule *orules;
   int ruleidx;
   int nr_wide_elems = 0;
 
@@ -1566,18 +1618,28 @@ collate_finish (struct localedef_t *locale, const struct charmap_t *charmap)
 				"LC_COLLATE"));
       return;
     }
+  if (nrules == 0)
+    {
+      /* An error message has already been printed:
+          empty category description not allowed.  */
+      return;
+    }
 
   /* If this assertion is hit change the type in `element_t'.  */
   assert (nrules <= sizeof (runp->used_in_level) * 8);
 
   /* Make sure that the `position' rule is used either in all sections
      or in none.  */
+  sect = collate->sections;
+  while (sect != NULL && sect->rules == NULL)
+    sect = sect->next;
+  orules = sect->rules;
   for (i = 0; i < nrules; ++i)
     for (sect = collate->sections; sect != NULL; sect = sect->next)
       if (sect != collate->current_section
 	  && sect->rules != NULL
 	  && ((sect->rules[i] & sort_position)
-	      != (collate->current_section->rules[i] & sort_position)))
+	      != (orules[i] & sort_position)))
 	{
 	  WITH_CUR_LOCALE (error (0, 0, _("\
 %s: `position' must be used for a specific level in all sections or none"),
@@ -2501,46 +2563,6 @@ collate_output (struct localedef_t *locale, const struct charmap_t *charmap,
 }
 
 
-static enum token_t
-skip_to (struct linereader *ldfile, struct locale_collate_t *collate,
-	 const struct charmap_t *charmap, int to_endif)
-{
-  while (1)
-    {
-      struct token *now = lr_token (ldfile, charmap, NULL, NULL, 0);
-      enum token_t nowtok = now->tok;
-
-      if (nowtok == tok_eof || nowtok == tok_end)
-	return nowtok;
-
-      if (nowtok == tok_ifdef || nowtok == tok_ifndef)
-	{
-	  lr_error (ldfile, _("%s: nested conditionals not supported"),
-		    "LC_COLLATE");
-	  nowtok = skip_to (ldfile, collate, charmap, tok_endif);
-	  if (nowtok == tok_eof || nowtok == tok_end)
-	    return nowtok;
-	}
-      else if (nowtok == tok_endif || (!to_endif && nowtok == tok_else))
-	{
-	  lr_ignore_rest (ldfile, 1);
-	  return nowtok;
-	}
-      else if (!to_endif && (nowtok == tok_elifdef || nowtok == tok_elifndef))
-	{
-	  /* Do not read the rest of the line.  */
-	  return nowtok;
-	}
-      else if (nowtok == tok_else)
-	{
-	  lr_error (ldfile, _("%s: more than one 'else'"), "LC_COLLATE");
-	}
-
-      lr_ignore_rest (ldfile, 0);
-    }
-}
-
-
 void
 collate_read (struct linereader *ldfile, struct localedef_t *result,
 	      const struct charmap_t *charmap, const char *repertoire_name,
@@ -2564,6 +2586,8 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
   */
   int state = 0;
 
+  static struct toggle_list_t *defined_keywords = NULL;
+
   /* Get the repertoire we have to use.  */
   if (repertoire_name != NULL)
     repertoire = repertoire_read (repertoire_name);
@@ -2571,8 +2595,6 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
   /* The rest of the line containing `LC_COLLATE' must be free.  */
   lr_ignore_rest (ldfile, 1);
 
-  while (1)
-    {
       do
 	{
 	  now = lr_token (ldfile, charmap, result, NULL, verbose);
@@ -2580,29 +2602,80 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
 	}
       while (nowtok == tok_eol);
 
-      if (nowtok != tok_define)
-	break;
-
+  while (nowtok == tok_define || nowtok == tok_undef)
+    {
+      /* Ignore the rest of the line if we don't need the input of
+         this line.  */
       if (ignore_content)
-	lr_ignore_rest (ldfile, 0);
-      else
-	{
-	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
-	  if (arg->tok != tok_ident)
-	    SYNTAX_ERROR (_("%s: syntax error"), "LC_COLLATE");
+        {
+          lr_ignore_rest (ldfile, 0);
+          now = lr_token (ldfile, charmap, result, NULL, verbose);
+          nowtok = now->tok;
+          continue;
+        }
+
+      arg = lr_token (ldfile, charmap, result, NULL, verbose);
+      if (arg->tok != tok_ident)
+        goto err_label;
+
+      if (nowtok == tok_define)
+        {
+	  struct toggle_list_t *runp = defined_keywords;
+	  char *name;
+
+	  while (runp != NULL)
+	    if (strncmp (runp->name, arg->val.str.startmb,
+	    	     arg->val.str.lenmb) == 0
+	        && runp->name[arg->val.str.lenmb] == '\0')
+              SYNTAX_ERROR (_("%s: syntax error"), "LC_COLLATE");
+	    else
+	      runp = runp->last;
+
+	  if (runp != NULL && runp->is_undefined == 0)
+	    {
+	      lr_ignore_rest (ldfile, 0);
+              SYNTAX_ERROR (_("%s: syntax error"), "LC_COLLATE");
+	    }
+
+	  if (runp == NULL)
+	    {
+	      runp = (struct toggle_list_t *) xcalloc (1, sizeof (*runp));
+	      runp->last = defined_keywords;
+	      defined_keywords = runp;
+	    }
 	  else
 	    {
-	      /* Simply add the new symbol.  */
-	      struct name_list *newsym = xmalloc (sizeof (*newsym)
-						  + arg->val.str.lenmb + 1);
-	      memcpy (newsym->str, arg->val.str.startmb, arg->val.str.lenmb);
-	      newsym->str[arg->val.str.lenmb] = '\0';
-	      newsym->next = defined;
-	      defined = newsym;
-
-	      lr_ignore_rest (ldfile, 1);
+	      free ((char *) runp->name);
+	      runp->is_undefined = 0;
 	    }
-	}
+
+	  name = (char *) xmalloc (arg->val.str.lenmb + 1);
+	  memcpy (name, arg->val.str.startmb, arg->val.str.lenmb);
+	  name[arg->val.str.lenmb] = '\0';
+	  runp->name = name;
+        }
+      else
+        {
+	  struct toggle_list_t *runp = defined_keywords;
+	  while (runp != NULL)
+	    if (strncmp (runp->name, arg->val.str.startmb,
+	    	     arg->val.str.lenmb) == 0
+	        && runp->name[arg->val.str.lenmb] == '\0')
+	    {
+	      runp->is_undefined = 1;
+              SYNTAX_ERROR (_("%s: syntax error"), "LC_COLLATE");
+	    }
+	    else
+	      runp = runp->last;
+        }
+
+      lr_ignore_rest (ldfile, 1);
+      do
+        {
+          now = lr_token (ldfile, charmap, result, NULL, verbose);
+          nowtok = now->tok;
+        }
+      while (nowtok == tok_eol);
     }
 
   if (nowtok == tok_copy)
@@ -2680,14 +2753,23 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
       switch (nowtok)
 	{
 	case tok_copy:
-	  /* Allow copying other locales.  */
+	  /* Ignore the rest of the line if we don't need the input of
+	     this line.  */
+	  if (ignore_content)
+	    {
+	      lr_ignore_rest (ldfile, 0);
+	      break;
+	    }
+
 	  now = lr_token (ldfile, charmap, result, NULL, verbose);
 	  if (now->tok != tok_string)
 	    goto err_label;
 
-	  if (! ignore_content)
-	    load_locale (LC_COLLATE, now->val.str.startmb, repertoire_name,
-			 charmap, result);
+	  if (state == 1 || state == 3 || state == 5)
+	    goto err_label;
+
+	  load_locale (LC_COLLATE, now->val.str.startmb, repertoire_name,
+		       charmap, result);
 
 	  lr_ignore_rest (ldfile, 1);
 	  break;
@@ -2700,9 +2782,6 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
 	      lr_ignore_rest (ldfile, 0);
 	      break;
 	    }
-
-	  if (state != 0)
-	    goto err_label;
 
 	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
 	  if (arg->tok != tok_number)
@@ -2724,7 +2803,7 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
 	      break;
 	    }
 
-	  if (state != 0)
+	  if (state == 1 || state == 3 || state == 5)
 	    goto err_label;
 
 	  arg = lr_token (ldfile, charmap, result, repertoire, verbose);
@@ -2771,7 +2850,7 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
 	      break;
 	    }
 
-	  if (state != 0 && state != 2)
+	  if (state == 1 || state == 3 || state == 5)
 	    goto err_label;
 
 	  arg = lr_token (ldfile, charmap, result, repertoire, verbose);
@@ -2837,7 +2916,7 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
 	      break;
 	    }
 
-	  if (state != 0 && state != 2)
+	  if (state == 1 || state == 3 || state == 5)
 	    goto err_label;
 
 	  arg = lr_token (ldfile, charmap, result, repertoire, verbose);
@@ -2983,7 +3062,7 @@ collate_read (struct linereader *ldfile, struct localedef_t *result,
 	      break;
 	    }
 
-	  if (state != 0)
+	  if (state == 1 || state == 3 || state == 5)
 	    goto err_label;
 
 	  arg = lr_token (ldfile, charmap, result, repertoire, verbose);
@@ -3104,7 +3183,7 @@ error while adding equivalent collating symbol"));
 	      break;
 	    }
 
-	  if (state != 0 && state != 1 && state != 2)
+	  if (state == 3 || state == 5)
 	    goto err_label;
 	  state = 1;
 
@@ -3363,6 +3442,9 @@ error while adding equivalent collating symbol"));
 		      no_error = 0;
 		    }
 		}
+	      /* Update current section.  */
+	      if (collate->cursor != NULL)
+	        collate->current_section = collate->cursor->section;
 
 	      lr_ignore_rest (ldfile, no_error);
 	    }
@@ -3412,8 +3494,6 @@ error while adding equivalent collating symbol"));
 %s: missing `reorder-end' keyword"), "LC_COLLATE"));
 	      state = 4;
 	    }
-	  else if (state != 2 && state != 4)
-	    goto err_label;
 	  state = 5;
 
 	  /* Get the name of the sections we are adding after.  */
@@ -3502,8 +3582,20 @@ error while adding equivalent collating symbol"));
 	    }
 	  else if (arg != NULL)
 	    {
+	      void *ptr = NULL;
 	      symstr = arg->val.str.startmb;
 	      symlen = arg->val.str.lenmb;
+	      if (state != 5
+		  && find_entry (&charmap->char_table, symstr, symlen, &ptr) != 0
+		  && (repertoire == NULL ||
+		      find_entry (&repertoire->char_table, symstr, symlen, &ptr) != 0)
+		  && find_entry (&collate->elem_table, symstr, symlen, &ptr) != 0
+	          && find_entry (&collate->sym_table, symstr, symlen, &ptr) != 0)
+		{
+		  if (verbose)
+		    lr_error (ldfile, _("%s: symbol `%.*s' not known"),
+			      "LC_COLLATE", (int) symlen, symstr);
+		}
 	    }
 	  else
 	    {
@@ -3744,8 +3836,126 @@ error while adding equivalent collating symbol"));
 			  repertoire, result, nowtok);
 	  break;
 
+	case tok_ifdef:
+	  /* Ignore the rest of the line if we don't need the input of
+	     this line.  */
+	  if (ignore_content)
+	    {
+	      lr_ignore_rest (ldfile, 0);
+	      break;
+	    }
+
+	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
+	  if (arg->tok != tok_ident)
+	    goto err_label;
+	  else
+	    {
+	      struct toggle_list_t *runp = defined_keywords;
+	      struct toggle_list_t *flow = (struct toggle_list_t *) xcalloc (1, sizeof (*runp));
+	      flow->name = "ifdef";
+	      flow->file = ldfile->fname;
+	      flow->line = ldfile->lineno;
+	      flow->last = collate->flow_control;
+	      collate->flow_control = flow;
+
+	      while (runp != NULL)
+		if (strncmp (runp->name, arg->val.str.startmb,
+			     arg->val.str.lenmb) == 0
+		    && runp->name[arg->val.str.lenmb] == '\0')
+		  break;
+		else
+		  runp = runp->last;
+
+	      if (runp == NULL)
+		{
+		  now = flow_skip(ldfile, charmap, collate);
+		  if (now->tok == tok_eof)
+		    WITH_CUR_LOCALE (error (0, 0, _("\
+%s: unterminated `%s' flow control"), "LC_COLLATE", collate->flow_control->name));
+		}
+	    }
+	  lr_ignore_rest (ldfile, 1);
+	  break;
+
+	case tok_ifndef:
+	  /* Ignore the rest of the line if we don't need the input of
+	     this line.  */
+	  if (ignore_content)
+	    {
+	      lr_ignore_rest (ldfile, 0);
+	      break;
+	    }
+
+	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
+	  if (arg->tok != tok_ident)
+	    goto err_label;
+	  else
+	    {
+	      struct toggle_list_t *runp = defined_keywords;
+	      struct toggle_list_t *flow = (struct toggle_list_t *) xcalloc (1, sizeof (*runp));
+	      flow->name = "ifndef";
+	      flow->file = ldfile->fname;
+	      flow->line = ldfile->lineno;
+	      flow->last = collate->flow_control;
+	      collate->flow_control = flow;
+
+	      while (runp != NULL)
+		if (strncmp (runp->name, arg->val.str.startmb,
+			     arg->val.str.lenmb) == 0
+		    && runp->name[arg->val.str.lenmb] == '\0')
+		  break;
+		else
+		  runp = runp->last;
+
+	      if (runp != NULL)
+		{
+		  now = flow_skip(ldfile, charmap, collate);
+		  if (now->tok == tok_eof)
+		    WITH_CUR_LOCALE (error (0, 0, _("\
+%s: unterminated `%s' flow control"), "LC_COLLATE", collate->flow_control->name));
+		}
+	    }
+	  lr_ignore_rest (ldfile, 1);
+	  break;
+
+	case tok_else:
+	  /* Ignore the rest of the line if we don't need the input of
+	     this line.  */
+	  if (ignore_content)
+	    {
+	      lr_ignore_rest (ldfile, 0);
+	      break;
+	    }
+
+	  if (strcmp (collate->flow_control->name, "else") == 0)
+	    lr_error (ldfile,
+		      _("%s: `else' statement at `%s:%Zu' cannot be followed by another `else' statement"),
+		      "LC_COLLATE", collate->flow_control->name, collate->flow_control->line);
+	  collate->flow_control->name = "else";
+	  collate->flow_control->file = ldfile->fname;
+	  collate->flow_control->line = ldfile->lineno;
+	  now = flow_skip(ldfile, charmap, collate);
+	  if (now->tok == tok_eof)
+	    WITH_CUR_LOCALE (error (0, 0, _("\
+%s: unterminated `%s' flow control"), "LC_COLLATE", collate->flow_control->name));
+	  break;
+
+	case tok_endif:
+	  /* Ignore the rest of the line if we don't need the input of
+	     this line.  */
+	  if (ignore_content)
+	    {
+	      lr_ignore_rest (ldfile, 0);
+	      break;
+	    }
+
+	  if (collate->flow_control == NULL)
+	    goto err_label;
+	  else
+	    collate->flow_control = collate->flow_control->last;
+	  break;
+
 	case tok_end:
-	seen_end:
 	  /* Next we assume `LC_COLLATE'.  */
 	  if (!ignore_content)
 	    {
@@ -3774,6 +3984,13 @@ error while adding equivalent collating symbol"));
 	      else if (state == 5)
 		WITH_CUR_LOCALE (error (0, 0, _("\
 %s: missing `reorder-sections-end' keyword"), "LC_COLLATE"));
+	      if (collate->flow_control != NULL
+		  && strcmp(collate->flow_control->file, ldfile->fname) == 0)
+		WITH_CUR_LOCALE (error (0, 0, _("\
+%s: unterminated `%s' flow control beginning at %s:%Zu"),
+				 "LC_COLLATE", collate->flow_control->name,
+				 collate->flow_control->file,
+				 collate->flow_control->line));
 	    }
 	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
 	  if (arg->tok == tok_eof)
@@ -3786,182 +4003,6 @@ error while adding equivalent collating symbol"));
 	  lr_ignore_rest (ldfile, arg->tok == tok_lc_collate);
 	  return;
 
-	case tok_define:
-	  if (ignore_content)
-	    {
-	      lr_ignore_rest (ldfile, 0);
-	      break;
-	    }
-
-	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
-	  if (arg->tok != tok_ident)
-	    goto err_label;
-
-	  /* Simply add the new symbol.  */
-	  struct name_list *newsym = xmalloc (sizeof (*newsym)
-					      + arg->val.str.lenmb + 1);
-	  memcpy (newsym->str, arg->val.str.startmb, arg->val.str.lenmb);
-	  newsym->str[arg->val.str.lenmb] = '\0';
-	  newsym->next = defined;
-	  defined = newsym;
-
-	  lr_ignore_rest (ldfile, 1);
-	  break;
-
-	case tok_undef:
-	  if (ignore_content)
-	    {
-	      lr_ignore_rest (ldfile, 0);
-	      break;
-	    }
-
-	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
-	  if (arg->tok != tok_ident)
-	    goto err_label;
-
-	  /* Remove _all_ occurrences of the symbol from the list.  */
-	  struct name_list *prevdef = NULL;
-	  struct name_list *curdef = defined;
-	  while (curdef != NULL)
-	    if (strncmp (arg->val.str.startmb, curdef->str,
-			 arg->val.str.lenmb) == 0
-		&& curdef->str[arg->val.str.lenmb] == '\0')
-	      {
-		if (prevdef == NULL)
-		  defined = curdef->next;
-		else
-		  prevdef->next = curdef->next;
-
-		struct name_list *olddef = curdef;
-		curdef = curdef->next;
-
-		free (olddef);
-	      }
-	    else
-	      {
-		prevdef = curdef;
-		curdef = curdef->next;
-	      }
-
-	  lr_ignore_rest (ldfile, 1);
-	  break;
-
-	case tok_ifdef:
-	case tok_ifndef:
-	  if (ignore_content)
-	    {
-	      lr_ignore_rest (ldfile, 0);
-	      break;
-	    }
-
-	found_ifdef:
-	  arg = lr_token (ldfile, charmap, result, NULL, verbose);
-	  if (arg->tok != tok_ident)
-	    goto err_label;
-	  lr_ignore_rest (ldfile, 1);
-
-	  if (collate->else_action == else_none)
-	    {
-	      curdef = defined;
-	      while (curdef != NULL)
-		if (strncmp (arg->val.str.startmb, curdef->str,
-			     arg->val.str.lenmb) == 0
-		    && curdef->str[arg->val.str.lenmb] == '\0')
-		  break;
-		else
-		  curdef = curdef->next;
-
-	      if ((nowtok == tok_ifdef && curdef != NULL)
-		  || (nowtok == tok_ifndef && curdef == NULL))
-		{
-		  /* We have to use the if-branch.  */
-		  collate->else_action = else_ignore;
-		}
-	      else
-		{
-		  /* We have to use the else-branch, if there is one.  */
-		  nowtok = skip_to (ldfile, collate, charmap, 0);
-		  if (nowtok == tok_else)
-		    collate->else_action = else_seen;
-		  else if (nowtok == tok_elifdef)
-		    {
-		      nowtok = tok_ifdef;
-		      goto found_ifdef;
-		    }
-		  else if (nowtok == tok_elifndef)
-		    {
-		      nowtok = tok_ifndef;
-		      goto found_ifdef;
-		    }
-		  else if (nowtok == tok_eof)
-		    goto seen_eof;
-		  else if (nowtok == tok_end)
-		    goto seen_end;
-		}
-	    }
-	  else
-	    {
-	      /* XXX Should it really become necessary to support nested
-		 preprocessor handling we will push the state here.  */
-	      lr_error (ldfile, _("%s: nested conditionals not supported"),
-			"LC_COLLATE");
-	      nowtok = skip_to (ldfile, collate, charmap, 1);
-	      if (nowtok == tok_eof)
-		goto seen_eof;
-	      else if (nowtok == tok_end)
-		goto seen_end;
-	    }
-	  break;
-
-	case tok_elifdef:
-	case tok_elifndef:
-	case tok_else:
-	  if (ignore_content)
-	    {
-	      lr_ignore_rest (ldfile, 0);
-	      break;
-	    }
-
-	  lr_ignore_rest (ldfile, 1);
-
-	  if (collate->else_action == else_ignore)
-	    {
-	      /* Ignore everything until the endif.  */
-	      nowtok = skip_to (ldfile, collate, charmap, 1);
-	      if (nowtok == tok_eof)
-		goto seen_eof;
-	      else if (nowtok == tok_end)
-		goto seen_end;
-	    }
-	  else
-	    {
-	      assert (collate->else_action == else_none);
-	      lr_error (ldfile, _("\
-%s: '%s' without matching 'ifdef' or 'ifndef'"), "LC_COLLATE",
-			nowtok == tok_else ? "else"
-			: nowtok == tok_elifdef ? "elifdef" : "elifndef");
-	    }
-	  break;
-
-	case tok_endif:
-	  if (ignore_content)
-	    {
-	      lr_ignore_rest (ldfile, 0);
-	      break;
-	    }
-
-	  lr_ignore_rest (ldfile, 1);
-
-	  if (collate->else_action != else_ignore
-	      && collate->else_action != else_seen)
-	    lr_error (ldfile, _("\
-%s: 'endif' without matching 'ifdef' or 'ifndef'"), "LC_COLLATE");
-
-	  /* XXX If we support nested preprocessor directives we pop
-	     the state here.  */
-	  collate->else_action = else_none;
-	  break;
-
 	default:
 	err_label:
 	  SYNTAX_ERROR (_("%s: syntax error"), "LC_COLLATE");
@@ -3972,7 +4013,6 @@ error while adding equivalent collating symbol"));
       nowtok = now->tok;
     }
 
- seen_eof:
   /* When we come here we reached the end of the file.  */
   lr_error (ldfile, _("%s: premature end of file"), "LC_COLLATE");
 }

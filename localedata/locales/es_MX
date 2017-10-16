@@ -63,7 +63,7 @@ LC_MONETARY
 int_curr_symbol      "<U004D><U0058><U004E><U0020>"
 currency_symbol      "<U0024>"
 mon_decimal_point    "<U002E>"
-mon_thousands_sep    "<U002C>"
+mon_thousands_sep    "<U0020>"
 mon_grouping         3;3
 positive_sign        ""
 negative_sign        "<U002D>"
@@ -79,7 +79,7 @@ END LC_MONETARY
 
 LC_NUMERIC
 decimal_point        "<U002E>"
-thousands_sep        "<U2009>"
+thousands_sep        "<U0020>"
 grouping             3;3
 END LC_NUMERIC
 
@@ -121,6 +121,8 @@ t_fmt_ampm ""
 date_fmt	"<U0025><U0061><U0020><U0025><U0062><U0020><U0025><U0065>/
 <U0020><U0025><U0048><U003A><U0025><U004D><U003A><U0025><U0053><U0020>/
 <U0025><U005A><U0020><U0025><U0059>"
+%  FIXME: found in CLDR
+first_weekday 2
 END LC_TIME
 
 LC_PAPER

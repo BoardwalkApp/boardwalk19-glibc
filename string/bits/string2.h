@@ -800,17 +800,17 @@ __stpcpy_small (char *__dest,
   __extension__								      \
   ({ size_t __s1_len, __s2_len;						      \
      (__builtin_constant_p (s1) && __builtin_constant_p (s2)		      \
-      && (__s1_len = strlen (s1), __s2_len = strlen (s2),		      \
+      && (__s1_len = __builtin_strlen (s1), __s2_len = __builtin_strlen (s2), \
 	  (!__string2_1bptr_p (s1) || __s1_len >= 4)			      \
 	  && (!__string2_1bptr_p (s2) || __s2_len >= 4))		      \
       ? __builtin_strcmp (s1, s2)					      \
       : (__builtin_constant_p (s1) && __string2_1bptr_p (s1)		      \
-	 && (__s1_len = strlen (s1), __s1_len < 4)			      \
+	 && (__s1_len = __builtin_strlen (s1), __s1_len < 4)		      \
 	 ? (__builtin_constant_p (s2) && __string2_1bptr_p (s2)		      \
 	    ? __builtin_strcmp (s1, s2)					      \
 	    : __strcmp_cg (s1, s2, __s1_len))				      \
 	 : (__builtin_constant_p (s2) && __string2_1bptr_p (s2)		      \
-	    && (__s2_len = strlen (s2), __s2_len < 4)			      \
+	    && (__s2_len = __builtin_strlen (s2), __s2_len < 4)		      \
 	    ? (__builtin_constant_p (s1) && __string2_1bptr_p (s1)	      \
 	       ? __builtin_strcmp (s1, s2)				      \
 	       : __strcmp_gc (s1, s2, __s2_len))			      \

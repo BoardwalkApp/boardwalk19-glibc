@@ -252,7 +252,13 @@ __free_tcb (struct pthread *pd)
    thread's THREAD_SELF value.  */
 START_THREAD_DEFN
 {
-  struct pthread *pd = START_THREAD_SELF;
+  assert(0);
+  abort();
+}
+
+void* potato_start_thread_real(void* arg) {
+  void* retval = NULL;
+  struct pthread *pd = arg;
 
 #if HP_TIMING_AVAIL
   /* Remember the time when the thread was started.  */
@@ -334,6 +340,7 @@ START_THREAD_DEFN
 #else
       THREAD_SETMEM (pd, result, pd->start_routine (pd->arg));
 #endif
+      retval = pd->result;
     }
 
   /* Call destructors for the thread_local TLS variables.  */
@@ -348,12 +355,14 @@ START_THREAD_DEFN
   /* Clean up any state libc stored in thread-local variables.  */
   __libc_thread_freeres ();
 
+#if 0
   /* If this is the last thread we terminate the process now.  We
      do not notify the debugger, it might just irritate it if there
      is no thread left.  */
   if (__glibc_unlikely (atomic_decrement_and_test (&__nptl_nthreads)))
     /* This was the last thread.  */
     exit (0);
+#endif
 
   /* Report the death of the thread if this is wanted.  */
   if (__glibc_unlikely (pd->report_events))
@@ -420,23 +429,38 @@ START_THREAD_DEFN
     }
 #endif
 
+#if 0
   /* Mark the memory of the stack as usable to the kernel.  We free
      everything except for the space used for the TCB itself.  */
   size_t pagesize_m1 = __getpagesize () - 1;
 #ifdef _STACK_GROWS_DOWN
   char *sp = CURRENT_STACK_FRAME;
   size_t freesize = (sp - (char *) pd->stackblock) & ~pagesize_m1;
-#else
-# error "to do"
-#endif
   assert (freesize < pd->stackblock_size);
   if (freesize > PTHREAD_STACK_MIN)
     __madvise (pd->stackblock, freesize - PTHREAD_STACK_MIN, MADV_DONTNEED);
+#else
+  /* Page aligned start of memory to free (higher than or equal 
+     to current sp plus the minimum stack size).  */
+  void *freeblock = (void*)((size_t)(CURRENT_STACK_FRAME 
+				     + PTHREAD_STACK_MIN 
+				     + pagesize_m1) 
+				    & ~pagesize_m1);
+  char *free_end = (char *) (((uintptr_t) pd - pd->guardsize) & ~pagesize_m1);
+  /* Is there any space to free?  */
+  if (free_end > (char *)freeblock)
+    {
+      size_t freesize = (size_t)(free_end - (char *)freeblock);
+      assert (freesize < pd->stackblock_size);
+      __madvise (freeblock, freesize, MADV_DONTNEED);
+    }
+#endif
+#endif
 
   /* If the thread is detached free the TCB.  */
   if (IS_DETACHED (pd))
     /* Free the TCB.  */
-    __free_tcb (pd);
+    ;//__free_tcb (pd);
   else if (__glibc_unlikely (pd->cancelhandling & SETXID_BITMASK))
     {
       /* Some other thread might call any of the setXid functions and expect
@@ -448,7 +472,7 @@ START_THREAD_DEFN
       /* Reset the value so that the stack can be reused.  */
       pd->setxid_futex = 0;
     }
-
+#if 0
   /* We cannot call '_exit' here.  '_exit' will terminate the process.
 
      The 'exit' implementation in the kernel will signal when the
@@ -460,6 +484,11 @@ START_THREAD_DEFN
   __exit_thread ();
 
   /* NOTREACHED */
+#endif
+  // free the whole fake stack
+  __free_tcb (pd);
+  pd->tid = 0;
+  return retval;
 }
 
 
@@ -773,3 +802,249 @@ PTHREAD_STATIC_FN_REQUIRE (pthread_key_create)
 PTHREAD_STATIC_FN_REQUIRE (pthread_key_delete)
 PTHREAD_STATIC_FN_REQUIRE (pthread_setspecific)
 PTHREAD_STATIC_FN_REQUIRE (pthread_getspecific)
+
+static void** potato_start_thread(void* arg) {
+  // Potato
+  struct pthread *pd = (struct pthread *) arg;
+  void** real_tls;
+  __asm__ volatile ("mrc p15, 0, %0, c13, c0, 3" : "=r"(real_tls));
+
+  real_tls[63] = pd + 1; // TLS_DEFINE_INIT_TP(real_tls[63], pd)
+
+  INTERNAL_SYSCALL_DECL (err);
+  pd->tid = INTERNAL_SYSCALL(gettid, err, 1, 0);
+
+  return potato_start_thread_real(arg);
+}
+
+int
+__potato_create_thread (pthread_t *newthread, const pthread_attr_t *attr,
+	void *(*start_routine) (void *), void *arg,
+	int (*real_create_thread)(pthread_t*, const void*, void* (*)(void*), void*),
+	const void* real_attr)
+{
+  STACK_VARIABLES;
+
+  const struct pthread_attr *iattr = (struct pthread_attr *) attr;
+  struct pthread_attr default_attr;
+  bool free_cpuset = false;
+  if (iattr == NULL)
+    {
+      lll_lock (__default_pthread_attr_lock, LLL_PRIVATE);
+      default_attr = __default_pthread_attr;
+      size_t cpusetsize = default_attr.cpusetsize;
+      if (cpusetsize > 0)
+	{
+	  cpu_set_t *cpuset;
+	  if (__glibc_likely (__libc_use_alloca (cpusetsize)))
+	    cpuset = __alloca (cpusetsize);
+	  else
+	    {
+	      cpuset = malloc (cpusetsize);
+	      if (cpuset == NULL)
+		{
+		  lll_unlock (__default_pthread_attr_lock, LLL_PRIVATE);
+		  return ENOMEM;
+		}
+	      free_cpuset = true;
+	    }
+	  memcpy (cpuset, default_attr.cpuset, cpusetsize);
+	  default_attr.cpuset = cpuset;
+	}
+      lll_unlock (__default_pthread_attr_lock, LLL_PRIVATE);
+      iattr = &default_attr;
+    }
+
+  struct pthread *pd = NULL;
+  int err = ALLOCATE_STACK (iattr, &pd);
+  int retval = 0;
+
+  if (__glibc_unlikely (err != 0))
+    /* Something went wrong.  Maybe a parameter of the attributes is
+       invalid or we could not allocate memory.  Note we have to
+       translate error codes.  */
+    {
+      retval = err == ENOMEM ? EAGAIN : err;
+      goto out;
+    }
+
+
+  /* Initialize the TCB.  All initializations with zero should be
+     performed in 'get_cached_stack'.  This way we avoid doing this if
+     the stack freshly allocated with 'mmap'.  */
+
+#if TLS_TCB_AT_TP
+  /* Reference to the TCB itself.  */
+  pd->header.self = pd;
+
+  /* Self-reference for TLS.  */
+  pd->header.tcb = pd;
+#endif
+
+  /* Store the address of the start routine and the parameter.  Since
+     we do not start the function directly the stillborn thread will
+     get the information from its thread descriptor.  */
+  pd->start_routine = start_routine;
+  pd->arg = arg;
+
+  /* Copy the thread attribute flags.  */
+  struct pthread *self = THREAD_SELF;
+  pd->flags = ((iattr->flags & ~(ATTR_FLAG_SCHED_SET | ATTR_FLAG_POLICY_SET))
+	       | (self->flags & (ATTR_FLAG_SCHED_SET | ATTR_FLAG_POLICY_SET)));
+
+  /* Initialize the field for the ID of the thread which is waiting
+     for us.  This is a self-reference in case the thread is created
+     detached.  */
+  pd->joinid = iattr->flags & ATTR_FLAG_DETACHSTATE ? pd : NULL;
+
+  /* The debug events are inherited from the parent.  */
+  pd->eventbuf = self->eventbuf;
+
+
+  /* Copy the parent's scheduling parameters.  The flags will say what
+     is valid and what is not.  */
+  pd->schedpolicy = self->schedpolicy;
+  pd->schedparam = self->schedparam;
+
+  /* Copy the stack guard canary.  */
+#ifdef THREAD_COPY_STACK_GUARD
+  THREAD_COPY_STACK_GUARD (pd);
+#endif
+
+  /* Copy the pointer guard value.  */
+#ifdef THREAD_COPY_POINTER_GUARD
+  THREAD_COPY_POINTER_GUARD (pd);
+#endif
+
+  /* Verify the sysinfo bits were copied in allocate_stack if needed.  */
+#ifdef NEED_DL_SYSINFO
+  CHECK_THREAD_SYSINFO (pd);
+#endif
+
+  /* Inform start_thread (above) about cancellation state that might
+     translate into inherited signal state.  */
+  pd->parent_cancelhandling = THREAD_GETMEM (THREAD_SELF, cancelhandling);
+
+  /* Determine scheduling parameters for the thread.  */
+  if (__builtin_expect ((iattr->flags & ATTR_FLAG_NOTINHERITSCHED) != 0, 0)
+      && (iattr->flags & (ATTR_FLAG_SCHED_SET | ATTR_FLAG_POLICY_SET)) != 0)
+    {
+      /* Use the scheduling parameters the user provided.  */
+      if (iattr->flags & ATTR_FLAG_POLICY_SET)
+        {
+          pd->schedpolicy = iattr->schedpolicy;
+          pd->flags |= ATTR_FLAG_POLICY_SET;
+        }
+      if (iattr->flags & ATTR_FLAG_SCHED_SET)
+        {
+          /* The values were validated in pthread_attr_setschedparam.  */
+          pd->schedparam = iattr->schedparam;
+          pd->flags |= ATTR_FLAG_SCHED_SET;
+        }
+
+      if ((pd->flags & (ATTR_FLAG_SCHED_SET | ATTR_FLAG_POLICY_SET))
+          != (ATTR_FLAG_SCHED_SET | ATTR_FLAG_POLICY_SET))
+        collect_default_sched (pd);
+    }
+
+  /* Pass the descriptor to the caller.  */
+  //*newthread = (pthread_t) pd;
+
+  LIBC_PROBE (pthread_create, 4, newthread, attr, start_routine, arg);
+
+  /* One more thread.  We cannot have the thread do this itself, since it
+     might exist but not have been scheduled yet by the time we've returned
+     and need to check the value to behave correctly.  We must do it before
+     creating the thread, in case it does get scheduled first and then
+     might mistakenly think it was the only thread.  In the failure case,
+     we momentarily store a false value; this doesn't matter because there
+     is no kosher thing a signal handler interrupting us right here can do
+     that cares whether the thread count is correct.  */
+  atomic_increment (&__nptl_nthreads);
+
+  bool thread_ran = false;
+
+  /* Start the thread.  */
+  if (__glibc_unlikely (report_thread_creation (pd)))
+    {
+      /* Create the thread.  We always create the thread stopped
+	 so that it does not get far before we tell the debugger.  */
+      retval = real_create_thread (newthread, real_attr, (void*) &potato_start_thread, pd);
+
+      if (retval == 0)
+	{
+	  /* create_thread should have set this so that the logic below can
+	     test it.  */
+	  assert (pd->stopped_start);
+
+	  /* Now fill in the information about the new thread in
+	     the newly created thread's data structure.  We cannot let
+	     the new thread do this since we don't know whether it was
+	     already scheduled when we send the event.  */
+	  pd->eventbuf.eventnum = TD_CREATE;
+	  pd->eventbuf.eventdata = pd;
+
+	  /* Enqueue the descriptor.  */
+	  do
+	    pd->nextevent = __nptl_last_event;
+	  while (atomic_compare_and_exchange_bool_acq (&__nptl_last_event,
+						       pd, pd->nextevent)
+		 != 0);
+
+	  /* Now call the function which signals the event.  */
+	  __nptl_create_event ();
+	}
+    }
+  else
+    retval = real_create_thread (newthread, real_attr, (void*) &potato_start_thread, pd);
+
+  if (__glibc_unlikely (retval != 0))
+    {
+      /* If thread creation "failed", that might mean that the thread got
+	 created and ran a little--short of running user code--but then
+	 create_thread cancelled it.  In that case, the thread will do all
+	 its own cleanup just like a normal thread exit after a successful
+	 creation would do.  */
+
+      if (thread_ran)
+	assert (pd->stopped_start);
+      else
+	{
+	  /* Oops, we lied for a second.  */
+	  atomic_decrement (&__nptl_nthreads);
+
+	  /* Perhaps a thread wants to change the IDs and is waiting for this
+	     stillborn thread.  */
+	  if (__glibc_unlikely (atomic_exchange_acq (&pd->setxid_futex, 0)
+				== -2))
+	    lll_futex_wake (&pd->setxid_futex, 1, LLL_PRIVATE);
+
+	  /* Free the resources.  */
+	  __deallocate_stack (pd);
+	}
+
+      /* We have to translate error codes.  */
+      if (retval == ENOMEM)
+	retval = EAGAIN;
+    }
+  else
+    {
+      if (pd->stopped_start)
+	/* The thread blocked on this lock either because we're doing TD_CREATE
+	   event reporting, or for some other reason that create_thread chose.
+	   Now let it run free.  */
+	lll_unlock (pd->lock, LLL_PRIVATE);
+
+      /* We now have for sure more than one thread.  The main thread might
+	 not yet have the flag set.  No need to set the global variable
+	 again if this is what we use.  */
+      THREAD_SETMEM (THREAD_SELF, header.multiple_threads, 1);
+    }
+
+ out:
+  if (__glibc_unlikely (free_cpuset))
+    free (default_attr.cpuset);
+
+  return retval;
+}
+versioned_symbol (libpthread, __potato_create_thread, potato_create_thread, GLIBC_2_0);

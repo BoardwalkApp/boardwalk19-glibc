@@ -5,6 +5,14 @@ asm-CPPFLAGS += -DGAS_SYNTAX
 # The i386 `long double' is a distinct type we support.
 long-double-fcts = yes
 
+ifeq ($(subdir),csu) 
+ifeq (yes,$(build-shared))
+# Compatibility
+sysdep_routines += libgcc-compat
+shared-only-routines += libgcc-compat
+endif
+endif
+
 ifeq ($(subdir),gmon)
 sysdep_routines += i386-mcount
 endif

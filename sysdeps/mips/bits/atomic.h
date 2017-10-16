@@ -75,7 +75,7 @@ typedef uintmax_t uatomic_max_t;
       is predicted not taken.  */
 
 
-#ifdef _MIPS_ARCH_R10000
+#if 1
 #define R10K_BEQZ_INSN "beqzl"
 #else
 #define R10K_BEQZ_INSN "beqz"

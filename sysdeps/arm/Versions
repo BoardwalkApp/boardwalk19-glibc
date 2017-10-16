@@ -17,4 +17,18 @@ libc {
   GLIBC_2.8 {
     __gnu_mcount_nc;
   }
+  GLIBC_2.0 {
+    # Functions from libgcc.
+    __ashldi3; __ashrdi3;
+    __cmpdi2;
+    __divsi3;
+    __fixdfdi;
+    __floatdidf;
+    __floatdisf;
+    __modsi3;
+    __muldi3;
+    __ucmpdi2;
+    __udivsi3;
+    __umodsi3;
+  }
 }

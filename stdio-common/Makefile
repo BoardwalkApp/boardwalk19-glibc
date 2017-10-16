@@ -107,9 +107,9 @@ CFLAGS-siglist.c = $(fno-unit-at-a-time)
 # GNU extension.  The latter are needed, though, when internal headers
 # are used.  So made sure we see the installed headers first.
 CFLAGS-scanf15.c = -I../libio -I../stdlib -I../wcsmbs -I../time -I../string \
-		   -I../wctype
+		   -I../wctype -I$(common-objpfx)misc
 CFLAGS-scanf17.c = -I../libio -I../stdlib -I../wcsmbs -I../time -I../string \
-		   -I../wctype
+		   -I../wctype -I$(common-objpfx)misc
 
 CPPFLAGS += $(libio-mtsafe)
 

@@ -77,13 +77,7 @@ __check_native (uint32_t a1_index, int *a1_native,
   memset (&nladdr, '\0', sizeof (nladdr));
   nladdr.nl_family = AF_NETLINK;
 
-#ifdef PAGE_SIZE
-  /* Help the compiler optimize out the malloc call if PAGE_SIZE
-     is constant and smaller or equal to PTHREAD_STACK_MIN/4.  */
-  const size_t buf_size = PAGE_SIZE;
-#else
   const size_t buf_size = __getpagesize ();
-#endif
   bool use_malloc = false;
   char *buf;
 

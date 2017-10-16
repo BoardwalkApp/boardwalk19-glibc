@@ -29,19 +29,16 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifndef __attribute__
-/* This feature is available in gcc versions 2.5 and later.  */
-# if __GNUC__ < 2 || (__GNUC__ == 2 && __GNUC_MINOR__ < 5) || \
-  defined __STRICT_ANSI__
-#  define __attribute__(Spec) /* empty */
-# endif
-/* The __-protected variants of `format' and `printf' attributes
-   are accepted by gcc versions 2.6.4 (effectively 2.7) and later.  */
-# if __GNUC__ < 2 || (__GNUC__ == 2 && __GNUC_MINOR__ < 7) || \
-  defined __STRICT_ANSI__
-#  define __format__ format
-#  define __printf__ printf
-# endif
+/* The __attribute__ feature is available in gcc versions 2.5 and later.
+   The __-protected variants of the attributes 'format' and 'printf' are
+   accepted by gcc versions 2.6.4 (effectively 2.7) and later.
+   We enable _GL_ATTRIBUTE_FORMAT only if these are supported too, because
+   gnulib and libintl do '#define printf __printf__' when they override
+   the 'printf' function.  */
+#if __GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 7)
+# define _GL_ATTRIBUTE_FORMAT(spec) __attribute__ ((__format__ spec))
+#else
+# define _GL_ATTRIBUTE_FORMAT(spec) /* empty */
 #endif
 
 #if defined (__GNU_LIBRARY__) && defined (HAVE_LINEWRAP_H)
@@ -132,10 +129,10 @@ extern void argp_fmtstream_free (argp_fmtstream_t __fs);
 
 extern ssize_t __argp_fmtstream_printf (argp_fmtstream_t __fs,
 					const char *__fmt, ...)
-     __attribute__ ((__format__ (printf, 2, 3)));
+     _GL_ATTRIBUTE_FORMAT ((printf, 2, 3));
 extern ssize_t argp_fmtstream_printf (argp_fmtstream_t __fs,
 				      const char *__fmt, ...)
-     __attribute__ ((__format__ (printf, 2, 3)));
+     _GL_ATTRIBUTE_FORMAT ((printf, 2, 3));
 
 extern int __argp_fmtstream_putc (argp_fmtstream_t __fs, int __ch);
 extern int argp_fmtstream_putc (argp_fmtstream_t __fs, int __ch);

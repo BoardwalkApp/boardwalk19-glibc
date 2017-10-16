@@ -42,6 +42,7 @@
 
 /* COMMON_CPUID_INDEX_7.  */
 #define bit_RTM		(1 << 11)
+#define bit_HLE		(1 << 4)
 #define bit_AVX2	(1 << 5)
 
 /* XCR0 Feature flags.  */

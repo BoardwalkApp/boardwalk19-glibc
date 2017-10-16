@@ -308,9 +308,9 @@ __res_vinit(res_state statp, int preinit) {
 			cp++;
 		    if ((*cp != '\0') && (*cp != '\n')
 			&& __inet_aton(cp, &a)) {
-			statp->nsaddr_list[nservall].sin_addr = a;
-			statp->nsaddr_list[nservall].sin_family = AF_INET;
-			statp->nsaddr_list[nservall].sin_port =
+			statp->nsaddr_list[nserv].sin_addr = a;
+			statp->nsaddr_list[nserv].sin_family = AF_INET;
+			statp->nsaddr_list[nserv].sin_port =
 				htons(NAMESERVER_PORT);
 			nserv++;
 #ifdef _LIBC
@@ -414,7 +414,7 @@ __res_vinit(res_state statp, int preinit) {
 		    continue;
 		}
 	    }
-	    statp->nscount = nservall;
+	    statp->nscount = nserv;
 #ifdef _LIBC
 	    if (nservall - nserv > 0) {
 		statp->_u._ext.nscount6 = nservall - nserv;
@@ -427,7 +427,7 @@ __res_vinit(res_state statp, int preinit) {
 #endif
 	    (void) fclose(fp);
 	}
-	if (__builtin_expect(statp->nscount == 0, 0)) {
+	if (__builtin_expect(nservall == 0, 0)) {
 	    statp->nsaddr.sin_addr = __inet_makeaddr(IN_LOOPBACKNET, 1);
 	    statp->nsaddr.sin_family = AF_INET;
 	    statp->nsaddr.sin_port = htons(NAMESERVER_PORT);

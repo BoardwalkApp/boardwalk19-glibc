@@ -3464,7 +3464,11 @@ collating-symbol <TIB-subA>
 <TIB-SIGN-RJES-SU-NGA-RO>
 <TIB-SIGN-NYI-ZLA-NAA-DA>
 <TIB-SIGN-SNA-LDAN>
+ifdef UPPERCASE_FIRST
+<CAP>
+else
 <MIN>
+endif
 # forme de base (bas de casse, arabe intrinsèque,
 # hébreu intrinsèque, etc.
 # basic form (lower case, intrinsic Arabic
@@ -3483,14 +3487,21 @@ collating-symbol <TIB-subA>
 <AME> # medial/m<e'>dian
 # 6
 #
+ifdef UPPERCASE_FIRST
+<ICA> # 7
+<ECA> # 8
+<AMI> # 9
+<MIN> # 10
+<IMI> # 11
+<EMI> # 12
+else
 <IMI> # 7
 <EMI> # 8
 <CAP> # 9
 <ICA> # 10
 <ECA> # 11
-<AMI>
-#alternate lower case/
-# 12
+<AMI> # 12 alternate lower case
+endif
 #
 #minuscules spéciales après majuscules
 # <ARABINT>/<ARABFOR>

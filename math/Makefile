@@ -89,15 +89,20 @@ long-c-yes = $(calls:=l)
 tests = test-matherr test-fenv atest-exp atest-sincos atest-exp2 basic-test \
 	test-misc test-fpucw test-fpucw-ieee tst-definitions test-tgmath \
 	test-tgmath-ret bug-nextafter bug-nexttoward bug-tgmath1 \
-	test-tgmath-int test-tgmath2 test-powl tst-CMPLX tst-CMPLX2 test-snan \
-	test-fenv-tls test-fenv-preserve test-fenv-return $(tests-static)
+	test-tgmath-int test-powl tst-CMPLX tst-CMPLX2 test-snan \
+	test-fenv-tls test-fenv-preserve test-fenv-return test-fenvinline \
+	$(tests-static)
 tests-static = test-fpucw-static test-fpucw-ieee-static
-# We do the `long double' tests only if this data type is available and
-# distinct from `double'.
+# We do the `long double' tests only if this data type is available.
 test-longdouble-yes = test-ldouble test-ildoubl
 
+ifeq ($(long-double-fcts),yes)
+# If we have distinct types then enable testing.
+test-long-double-fcts = yes
+endif
+
 ifneq (no,$(PERL))
-libm-tests = test-float test-double $(test-longdouble-$(long-double-fcts)) \
+libm-tests = test-float test-double $(test-longdouble-$(test-long-double-fcts)) \
 	test-ifloat test-idouble
 libm-tests.o = $(addsuffix .o,$(libm-tests))
 
@@ -200,10 +205,14 @@ math-CPPFLAGS += -D__NO_MATH_INLINES -D__LIBC_INTERNAL_MATH_INLINES
 ifneq ($(long-double-fcts),yes)
 # The `double' and `long double' types are the same on this machine.
 # We won't compile the `long double' code at all.  Tell the `double' code
-# to define aliases for the `FUNCl' names.  To avoid type conflicts in
-# defining those aliases, tell <math.h> to declare the `FUNCl' names with
-# `double' instead of `long double'.
+# to define aliases for the `FUNCl' names.
+ifeq ($(header-long-double-fcts),yes)
+math-CPPFLAGS += -DNO_LONG_DOUBLE
+else
+# To avoid type conflicts in  defining those aliases, tell <math.h> to
+# declare the `FUNCl' names with `double' instead of `long double'.
 math-CPPFLAGS += -DNO_LONG_DOUBLE -D_Mlong_double_=double
+endif
 endif
 
 # The fdlibm code generates a lot of these warnings but is otherwise clean.

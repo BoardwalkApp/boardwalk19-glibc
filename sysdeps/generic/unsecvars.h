@@ -17,6 +17,7 @@
   "LD_USE_LOAD_BIAS\0"							      \
   "LOCALDOMAIN\0"							      \
   "LOCPATH\0"								      \
+  "MALLOC_CHECK_\0"							      \
   "MALLOC_TRACE\0"							      \
   "NIS_PATH\0"								      \
   "NLSPATH\0"								      \

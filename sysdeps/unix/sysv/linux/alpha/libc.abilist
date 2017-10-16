@@ -179,6 +179,7 @@ GLIBC_2.0
  __mempcpy F
  __monstartup F
  __morecore D 0x8
+ __multi3 F
  __nss_configure_lookup F
  __nss_database_lookup F
  __nss_group_lookup F

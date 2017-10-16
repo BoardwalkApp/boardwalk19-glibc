@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 
 extern char **__libc_argv attribute_hidden;
@@ -26,9 +27,15 @@ __attribute__ ((noreturn))
 __fortify_fail (msg)
      const char *msg;
 {
+  int do_abort;
+  /* Disable backtraces for fortify failures on the stack.  */
+  if (strncmp(msg, "stack", 5) == 0)
+    do_abort = 1;
+  else
+    do_abort = 2;
   /* The loop is added only to keep gcc happy.  */
   while (1)
-    __libc_message (2, "*** %s ***: %s terminated\n",
+    __libc_message (do_abort, "*** %s ***: %s terminated\n",
 		    msg, __libc_argv[0] ?: "<unknown>");
 }
 libc_hidden_def (__fortify_fail)

@@ -17,6 +17,7 @@
    <http://www.gnu.org/licenses/>.  */
 
 #include <fcntl.h>
+#include <limits.h>
 #include <paths.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -15,3 +15,5 @@ AC_TRY_COMPILE(dnl
 if test "x$libc_cv_hurd_version" != xok; then
   AC_MSG_ERROR(Hurd headers not installed or too old)
 fi
+
+use_ldconfig=yes

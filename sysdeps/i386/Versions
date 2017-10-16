@@ -8,6 +8,9 @@ libc {
   GLIBC_2.0 {
     # Functions from libgcc.
     __divdi3; __moddi3; __udivdi3; __umoddi3;
+    __cmpdi2; __ucmpdi2;
+    __fixunsdfdi; __fixunssfdi; __fixunsxfdi;
+    __floatdidf;
   }
   GLIBC_2.1 {
     # global variable

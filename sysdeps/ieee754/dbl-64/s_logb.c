@@ -23,6 +23,7 @@ double
 __logb (double x)
 {
   int32_t lx, ix, rix;
+  double ret;
 
   EXTRACT_WORDS (ix, lx, x);
   ix &= 0x7fffffff;             /* high |x| */
@@ -41,7 +42,9 @@ __logb (double x)
 	ma = __builtin_clz (ix);
       rix -= ma - 12;
     }
-  return (double) (rix - 1023);
+  ret = (double) (rix - 1023);
+  /* The test is to avoid logb_downward (0.0) == -0.0.  */
+  return ret == -0.0 ? 0.0 : ret;
 }
 weak_alias (__logb, logb)
 #ifdef NO_LONG_DOUBLE

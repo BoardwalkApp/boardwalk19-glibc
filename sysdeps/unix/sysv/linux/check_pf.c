@@ -24,6 +24,8 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <alloca.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <sys/socket.h>
 

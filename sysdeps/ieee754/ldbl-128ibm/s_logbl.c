@@ -26,11 +26,13 @@
 long double
 __logbl (long double x)
 {
-  int64_t hx, rhx;
-  double xhi;
+  int64_t hx, hxs, rhx;
+  double xhi, xlo;
+  long double ret;
 
-  xhi = ldbl_high (x);
+  ldbl_unpack (x, &xhi, &xlo);
   EXTRACT_WORDS64 (hx, xhi);
+  hxs = hx;
   hx &= 0x7fffffffffffffffLL;	/* high |x| */
   if (hx == 0)
     return -1.0 / fabs (x);
@@ -42,7 +44,19 @@ __logbl (long double x)
          though it were normalized.  */
       rhx -= __builtin_clzll (hx) - 12;
     }
-  return (long double) (rhx - 1023);
+  else if ((hx & 0x000fffffffffffffLL) == 0)
+    {
+      /* If the high part is a power of 2, and the low part is nonzero
+	 with the opposite sign, the low part affects the
+	 exponent.  */
+      int64_t lx;
+      EXTRACT_WORDS64 (lx, xlo);
+      if ((hxs ^ lx) < 0 && (lx & 0x7fffffffffffffffLL) != 0)
+	rhx--;
+    }
+  ret = (long double) (rhx - 1023);
+  /* The test is to avoid logb_downward (0.0) == -0.0.  */
+  return ret == -0.0 ? 0.0 : ret;
 }
 #ifndef __logbl
 long_double_symbol (libm, __logbl, logbl);
